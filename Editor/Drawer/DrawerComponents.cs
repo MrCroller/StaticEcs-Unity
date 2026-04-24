@@ -27,6 +27,8 @@ namespace FFS.Libraries.StaticEcs.Unity.Editor {
 
         private static readonly List<int> _sortOrderCache = new();
         private static readonly Dictionary<int, string> _componentFilters = new();
+        private static readonly MethodInfo _drawMultiComponentElementsMethod =
+            typeof(Drawer).GetMethod(nameof(DrawMultiComponentElements), BindingFlags.NonPublic | BindingFlags.Static);
 
         private static List<int> BuildProviderSortedOrder(List<IComponentOrTagProvider> providers) {
             var order = _sortOrderCache;
@@ -441,14 +443,24 @@ namespace FFS.Libraries.StaticEcs.Unity.Editor {
 
             EditorGUILayout.LabelField("Count", count.ToString());
 
-            var itemProp = type.GetProperty("Item", BindingFlags.Public | BindingFlags.Instance);
-            if (itemProp == null) return;
+            var genericArguments = type.GetGenericArguments();
+            if (genericArguments.Length < 2 || _drawMultiComponentElementsMethod == null) return;
 
-            var elementType = itemProp.PropertyType;
+            var worldType = genericArguments[0];
+            var elementType = genericArguments[genericArguments.Length - 1];
+            _drawMultiComponentElementsMethod
+                .MakeGenericMethod(worldType, elementType)
+                .Invoke(null, new object[] { component, count });
+        }
+
+        private static void DrawMultiComponentElements<TWorld, TValue>(IComponent component, ushort count)
+            where TWorld : struct, IWorldType
+            where TValue : struct, IMultiComponent {
+            var multi = (World<TWorld>.Multi<TValue>) component;
             for (var i = 0; i < count; i++) {
-                var element = itemProp.GetValue(component, new object[] { i });
+                var element = multi[i];
                 var level = 5;
-                TryDrawObject(ref level, $"[{i}]", elementType, element, out _);
+                TryDrawObject(ref level, $"[{i}]", typeof(TValue), element, out _);
             }
         }
 
